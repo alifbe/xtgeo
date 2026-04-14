@@ -77,6 +77,11 @@ class _BaseResInsightDataRW:
         """
         from ._rips_package import rips
 
+        if rips is None:
+            raise ImportError(
+                "The 'rips' package is required but not installed. "
+                "Install it with: pip install rips"
+            )
         collections = self.get_project().descendants(rips.PolygonCollection)
         if not collections:
             raise RuntimeError(

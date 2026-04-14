@@ -108,6 +108,7 @@ class RipsApiUtils:
             resinsight_executable=str(executable),
             console=console_mode,
             launch_port=port,
+            command_line_parameters=["--threadcount", "1"],
         )
         logger.debug("Launching ResInsight using '%s'", str(executable))
         if instance is None:

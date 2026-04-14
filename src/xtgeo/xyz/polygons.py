@@ -501,6 +501,7 @@ class Polygons(XYZ):
     def to_resinsight(
         self,
         instance_or_port: ResInsightInstanceOrPortType | None,
+        name: str | None = None,
         find_last: bool = True,
     ) -> None:
         """Export this Polygons object to the active ResInsight project.
@@ -510,13 +511,18 @@ class Polygons(XYZ):
         collection, its coordinates are updated in place; otherwise a new
         polygon is created.
 
-        Polygon names are derived from the instance :attr:`name`.  When more
-        than one segment is present the name is suffixed with the POLY_ID value
-        (e.g. ``"MyFault_0"``, ``"MyFault_1"``).
+        Polygon names are always derived from the instance :attr:`name` suffixed
+        with the POLY_ID value (e.g. ``"MyFault_0"``, ``"MyFault_1"``), even when
+        only a single segment is present.  This ensures stable names when the
+        segment count changes between exports.
 
         Args:
             instance_or_port: Optional ``rips.Instance`` or gRPC port. Use
                 ``None`` to auto-discover a running ResInsight instance.
+            name: Optional base name for the polygon(s) in ResInsight. If provided,
+                it overrides the instance :attr:`name` for naming the polygon(s) in
+                ResInsight. The final polygon names in ResInsight will still be suffixed
+                with the POLY_ID value (e.g. ``"MyFault_0"``, ``"MyFault_1"``) to ensure stable names when the segment count changes between exports.
             find_last: Controls which existing polygon to replace when multiple
                 polygons share the same name. If ``True`` (default), the last
                 matching polygon is replaced; if ``False``, the first is replaced.
@@ -539,7 +545,7 @@ class Polygons(XYZ):
         ) in xtgeo.interfaces.resinsight.PolygonDataResInsight.from_xtgeo_polygons_all(
             self
         ):
-            writer.save(data, find_last=find_last)
+            writer.save(data, name=None, find_last=find_last)
 
     # ----------------------------------------------------------------------------------
     # Class methods

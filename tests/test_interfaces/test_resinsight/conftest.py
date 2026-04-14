@@ -49,7 +49,10 @@ def resinsight_instance(testdata_path) -> RipsInstanceType:
     emerald.name = "EXAMPLE"
     emerald.update()
 
+    cases_names = [case.name for case in instance.project.cases()]
+
     logger.info("ResInsight instance created and test cases loaded")
+    logger.info("Available cases in project: %s", cases_names)
     yield instance
 
     # Teardown: close the instance after tests are done

@@ -317,7 +317,7 @@ def test_public_api_to_resinsight(resinsight_instance):
     poly = xtgeo.Polygons(values=df, name="TO_RESINSIGHT")
     poly.to_resinsight(resinsight_instance)
 
-    loaded = xtgeo.polygons_from_resinsight(resinsight_instance, "TO_RESINSIGHT")
+    loaded = xtgeo.polygons_from_resinsight(resinsight_instance, "TO_RESINSIGHT_0")
     df_loaded = loaded.get_dataframe()
     assert len(df_loaded) == 3
     assert_allclose(df_loaded["X_UTME"].values, [50.0, 60.0, 60.0])

@@ -11,6 +11,8 @@ pytestmark = pytest.mark.requires_resinsight
 
 def test_init_with_none_auto_discovers(resinsight_instance):
     util = RipsApiUtils(instance_or_port=None)
+    print (util.instance.location)
+    print (resinsight_instance.location)
     assert util.instance.location == resinsight_instance.location, (
         "Should auto-discover the running ResInsight instance"
     )

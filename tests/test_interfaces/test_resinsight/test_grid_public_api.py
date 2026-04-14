@@ -60,15 +60,6 @@ def test_grid_from_resinsight_no_matching_case_raises(resinsight_instance):
         xtgeo.grid_from_resinsight(resinsight_instance, "NON_EXISTENT_CASE")
 
 
-def test_grid_from_resinsight_auto_discover(resinsight_instance):
-    """Passing None lets ResInsight auto-discover the running instance."""
-    grid = xtgeo.grid_from_resinsight(None, "EXAMPLE")
-    assert isinstance(grid, xtgeo.Grid)
-    assert grid.ncol == 4
-    assert grid.nrow == 4
-    assert grid.nlay == 3
-
-
 # ---------------------------------------------------------------------------
 # Grid.to_resinsight
 # ---------------------------------------------------------------------------

@@ -195,7 +195,7 @@ class PolygonWriter(_BaseResInsightDataRW):
     ) -> None:
         super().__init__(instance_or_port)
 
-    def save(self, data: PolygonDataResInsight, find_last: bool = True) -> None:
+    def save(self, data: PolygonDataResInsight, name: str | None = None, find_last: bool = True) -> None:
         """Save a polygon to ResInsight.
 
         If a polygon with the same name already exists in the project's polygon
@@ -204,25 +204,27 @@ class PolygonWriter(_BaseResInsightDataRW):
 
         Args:
             data: The polygon data to save.
+            name: Optional name for the polygon. If provided, it overrides the name in `data`.
             find_last: When multiple polygons share the same name, replace the
                 last match if ``True`` (default) or the first match if ``False``.
         """
         try:
             collection = self.get_polygon_collection()
-            existing = self.find_polygon(collection, data.name, find_last)
+            polygon_name = name if name is not None else data.name
+            existing = self.find_polygon(collection, polygon_name, find_last)
             if existing is not None:
                 logger.debug(
                     "Found existing polygon named '%s'. Updating its coordinates.",
-                    data.name,
+                    polygon_name,
                 )
                 existing.coordinates = data.coordinates
                 existing.update()
             else:
                 logger.debug(
                     "No existing polygon named '%s' found. Creating a new one.",
-                    data.name,
+                    polygon_name,
                 )
-                collection.create_polygon(name=data.name, coordinates=data.coordinates)
+                collection.create_polygon(name=polygon_name, coordinates=data.coordinates)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to save ResInsight polygon data: {exc}"
