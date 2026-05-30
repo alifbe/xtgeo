@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from xtgeo.common.log import null_logger
 
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
         ResInsightInstanceOrPortType,
         RipsCaseType,
         RipsInstanceType,
+        RipsPolygonCollectionType,
+        RipsPolygonType,
         RipsProjectType,
     )
 
@@ -162,3 +164,75 @@ class _BaseResInsightDataRW:
             return None
 
         return select_by_name(cases, case_name, find_last=find_last)
+
+    def get_polygon_collection(self) -> RipsPolygonCollectionType:
+        """Return the first PolygonCollection in the active ResInsight project.
+
+        Raises:
+            RuntimeError: If no PolygonCollection is present in the project.
+        """
+        collections = self.get_project().descendants(
+            require_rips().PolygonCollection
+        )
+        if not collections:
+            raise RuntimeError(
+                "No PolygonCollection found in the active ResInsight project"
+            )
+        logger.debug("Found %d PolygonCollection(s) in project", len(collections))
+        return collections[0]
+
+    @staticmethod
+    def find_polygon(
+        collection: RipsPolygonCollectionType, name: str, find_last: bool
+    ) -> RipsPolygonType | None:
+        """Return the first or last polygon with the given name, or ``None``.
+
+        Args:
+            collection: The ``rips.PolygonCollection`` to search.
+            name: Exact polygon name to match.
+            find_last: If ``True``, continue scanning after a match so the last
+                match is returned; if ``False``, stop at the first match.
+        """
+        return select_by_name(collection.polygons(), name, find_last=find_last)
+
+    @staticmethod
+    def find_folder(
+        collection: Any, name: str, name_attr: str = "polygon_collection_name"
+    ) -> Any | None:
+        """Return the first sub-collection (folder) with the given name, or ``None``.
+
+        Works with any ResInsight collection that supports ``sub_collections()``
+        (e.g. ``PolygonCollection``, ``SurfaceCollection``).
+
+        Args:
+            collection: The parent collection to search.
+            name: Exact folder name to match.
+            name_attr: Attribute on the sub-collection that holds its name.
+                Defaults to ``"polygon_collection_name"``.
+        """
+        return select_by_name(
+            collection.sub_collections(),  # type: ignore[attr-defined]
+            name,
+            find_last=False,
+            name_attr=name_attr,
+        )
+
+    @staticmethod
+    def get_or_create_folder(
+        collection: Any, name: str, name_attr: str = "polygon_collection_name"
+    ) -> Any:
+        """Find an existing folder or create a new one.
+
+        Works with any ResInsight collection that supports ``sub_collections()``
+        and ``add_folder()`` (e.g. ``PolygonCollection``, ``SurfaceCollection``).
+
+        Args:
+            collection: The parent collection.
+            name: Name for the sub-collection folder.
+            name_attr: Attribute on the sub-collection that holds its name.
+                Defaults to ``"polygon_collection_name"``.
+
+        Returns:
+            The existing or newly created sub-collection.
+        """
+        return resolve_folder(collection, name, name_attr, create=True)

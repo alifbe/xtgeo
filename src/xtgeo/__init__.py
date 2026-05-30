@@ -161,6 +161,7 @@ from xtgeo.grid3d.grid import (
 )
 from xtgeo.xyz.polygons import (
     polygons_from_file,
+    polygons_from_resinsight,
     polygons_from_roxar,
     polygons_from_wells,
 )
@@ -247,6 +248,7 @@ __all__ = [
     "points_from_wells_dfrac",
     "polygons",
     "polygons_from_file",
+    "polygons_from_resinsight",
     "polygons_from_roxar",
     "polygons_from_wells",
     "regular_surface",

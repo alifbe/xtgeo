@@ -27,6 +27,7 @@ from ._xyz_io import _convert_idbased_xyz
 
 if TYPE_CHECKING:
     from xtgeo.common.types import FileLike
+    from xtgeo.interfaces.resinsight._rips_package import ResInsightInstanceOrPortType
     from xtgeo.well.well1 import Well
     from xtgeo.xyz.points import Points
 
@@ -221,6 +222,70 @@ def polygons_from_wells(
         points = xtgeo.polygons_from_wells(wells, zone=2)
     """
     return Polygons(**_wells_importer(wells, zone, resample))
+
+
+def polygons_from_resinsight(
+    instance_or_port: ResInsightInstanceOrPortType | None,
+    polygon_name: str,
+    find_last: bool = True,
+) -> Polygons:
+    """Load polygon(s) from ResInsight into an XTGeo :class:`Polygons` object.
+
+    Looks up ``polygon_name`` in the active ResInsight project's polygon
+    collection, checking **folders first**, then individual polygons:
+
+    - If a folder with ``polygon_name`` exists, all polygons inside it are
+      loaded and combined into a multi-segment :class:`Polygons` (one POLY_ID
+      per polygon in the folder).
+    - Otherwise, a single polygon with that name is loaded as a single-segment
+      :class:`Polygons` (POLY_ID = 0).
+
+    Args:
+        instance_or_port: Optional ``rips.Instance`` or gRPC port. Use ``None``
+            to auto-discover a running ResInsight instance.
+        polygon_name: Name of the polygon or folder to load from ResInsight.
+        find_last: When looking up a single polygon and multiple polygons share
+            the same name, select the last match if ``True`` (default) or the
+            first match if ``False``.
+
+    Returns:
+        A :class:`Polygons` instance.
+
+    Example::
+
+        import xtgeo
+
+        poly = xtgeo.polygons_from_resinsight(5000, "MyFaultPolygon")
+        print(poly.get_dataframe())
+
+    """
+    import xtgeo.interfaces.resinsight
+
+    reader = xtgeo.interfaces.resinsight.PolygonReader(
+        instance_or_port=instance_or_port,
+    )
+    data_list = reader.load_by_name(polygon_name, find_last=find_last)
+
+    if not data_list:
+        raise RuntimeError(
+            f"No polygon data found for '{polygon_name}' "
+            "(folder exists but contains no polygons)"
+        )
+
+    if len(data_list) == 1:
+        poly = data_list[0].to_xtgeo_polygons()
+        poly._name = polygon_name
+        return poly
+
+    # Multiple polygons from a folder: combine into multi-segment Polygons.
+    frames = []
+    for poly_id, data in enumerate(data_list):
+        poly = data.to_xtgeo_polygons()
+        df = poly.get_dataframe()
+        df[poly.pname] = poly_id
+        frames.append(df)
+    combined = pd.concat(frames, ignore_index=True)
+    return Polygons(values=combined, name=polygon_name)
 
 
 def _generate_docstring_polygons(
@@ -474,6 +539,57 @@ class Polygons(XYZ):
             self._tname = None
         if self._hname not in self._df.columns:
             self._hname = None
+
+    def to_resinsight(
+        self,
+        instance_or_port: ResInsightInstanceOrPortType | None,
+        name: str | None = None,
+        find_last: bool = True,
+    ) -> None:
+        """Export this Polygons object to the active ResInsight project.
+
+        A folder named after this instance's :attr:`name` (or the ``name``
+        argument, if provided) is created or reused in the polygon collection.
+        Each POLY_ID segment is stored as a separate polygon inside it, named
+        ``"{name} (0)"``, ``"{name} (1)"``, etc.
+
+        If a folder with matching polygon names already exists, their
+        coordinates are updated in place.
+
+        .. note::
+            Polygons that exist in the folder from a previous save but are not
+            part of the current export are **not** removed.  This is a
+            limitation of the ResInsight gRPC API, which does not support
+            polygon deletion.
+
+        Args:
+            instance_or_port: Optional ``rips.Instance`` or gRPC port. Use
+                ``None`` to auto-discover a running ResInsight instance.
+            name: Optional name to use for the folder in ResInsight.
+                Defaults to this instance's :attr:`name`.
+            find_last: Not used; kept for API consistency with
+                :meth:`~xtgeo.grid3d.grid.Grid.to_resinsight`.
+
+        Example::
+
+            import xtgeo
+
+            poly = xtgeo.polygons_from_file("my_fault.pol")
+            poly.to_resinsight(5000)
+
+        """
+        import xtgeo.interfaces.resinsight
+
+        effective_name = name if name is not None else self.name
+        writer = xtgeo.interfaces.resinsight.PolygonWriter(
+            instance_or_port=instance_or_port
+        )
+        segments = (
+            xtgeo.interfaces.resinsight.PolygonDataResInsight.from_xtgeo_polygons_all(
+                self, name=effective_name
+            )
+        )
+        writer.save_to_folder(effective_name, segments)
 
     # ----------------------------------------------------------------------------------
     # Class methods

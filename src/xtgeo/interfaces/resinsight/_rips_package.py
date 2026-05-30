@@ -71,6 +71,8 @@ if rips is not None:
             Case as _RipsCase,
             Instance as _RipsInstance,
             NameConflictPolicy,  # noqa: F401
+            Polygon as _RipsPolygon,
+            PolygonCollection as _RipsPolygonCollection,
             Project as _RipsProject,
             PropertyDataType,  # noqa: F401
             PropertyType,  # noqa: F401
@@ -79,12 +81,14 @@ if rips is not None:
         _rips_import_error = (
             f"The installed rips package does not provide the required API "
             "symbols (Case, Instance, NameConflictPolicy, Project, "
-            f"PropertyDataType, PropertyType): {err}. "
+            f"Polygon, PolygonCollection, PropertyDataType, PropertyType): {err}. "
             f"Please upgrade: pip install 'rips>={MIN_RIPS_VERSION}'"
         )
         rips = None
         _RipsCase = Any  # type: ignore[misc,assignment]
         _RipsInstance = Any  # type: ignore[misc,assignment]
+        _RipsPolygon = Any  # type: ignore[misc,assignment]
+        _RipsPolygonCollection = Any  # type: ignore[misc,assignment]
         _RipsProject = Any  # type: ignore[misc,assignment]
         NameConflictPolicy = Any  # type: ignore[misc,assignment]
         PropertyDataType = Any  # type: ignore[misc,assignment]
@@ -92,6 +96,8 @@ if rips is not None:
 else:
     _RipsCase = Any  # type: ignore[misc,assignment]
     _RipsInstance = Any  # type: ignore[misc,assignment]
+    _RipsPolygon = Any  # type: ignore[misc,assignment]
+    _RipsPolygonCollection = Any  # type: ignore[misc,assignment]
     _RipsProject = Any  # type: ignore[misc,assignment]
     NameConflictPolicy = Any  # type: ignore[misc,assignment]
     PropertyDataType = Any  # type: ignore[misc,assignment]
@@ -99,6 +105,8 @@ else:
 
 RipsCaseType: TypeAlias = _RipsCase  # type: ignore[misc]
 RipsInstanceType: TypeAlias = _RipsInstance  # type: ignore[misc]
+RipsPolygonType: TypeAlias = _RipsPolygon  # type: ignore[misc]
+RipsPolygonCollectionType: TypeAlias = _RipsPolygonCollection  # type: ignore[misc]
 RipsProjectType: TypeAlias = _RipsProject  # type: ignore[misc]
 
 ResInsightInstanceOrPortType: TypeAlias = int | RipsInstanceType
