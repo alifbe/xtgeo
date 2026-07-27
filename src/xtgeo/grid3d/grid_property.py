@@ -262,13 +262,12 @@ def gridproperty_from_resinsight(
         )
     if property_name is _REQUIRED:
         raise TypeError(
-            "gridproperty_from_resinsight() missing required argument: "
-            "'property_name'"
+            "gridproperty_from_resinsight() missing required argument: 'property_name'"
         )
 
-    import xtgeo.interfaces.resinsight
+    from xtgeo.interfaces.resinsight._grid_property import GridPropertyReader
 
-    data = xtgeo.interfaces.resinsight.GridPropertyReader(
+    data = GridPropertyReader(
         instance_or_port=instance_or_port,
     ).load(
         case=case,
@@ -1091,13 +1090,16 @@ class GridProperty(_Grid3D):
         if case is None:
             raise TypeError("to_resinsight() missing required argument: 'case'")
 
-        import xtgeo.interfaces.resinsight as resinsight_interface
+        from xtgeo.interfaces.resinsight._grid_property import (
+            GridPropertyDataResInsight,
+            GridPropertyWriter,
+        )
 
         pname = property_name if property_name is not None else self.name
         if pname is None:
             raise ValueError("property_name must be given (GridProperty.name is None)")
 
-        data = resinsight_interface.GridPropertyDataResInsight.from_xtgeo_gridproperty(
+        data = GridPropertyDataResInsight.from_xtgeo_gridproperty(
             self,
             property_type=property_type,
             time_step_index=time_step_index,
@@ -1108,9 +1110,7 @@ class GridProperty(_Grid3D):
 
             data = replace(data, name=pname)
 
-        writer = resinsight_interface.GridPropertyWriter(
-            instance_or_port=instance_or_port
-        )
+        writer = GridPropertyWriter(instance_or_port=instance_or_port)
         writer.save(data, case, find_last)
 
     # ==================================================================================
