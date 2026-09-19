@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -83,13 +84,10 @@ def get_transmissibilities(
     GridProperty,
     GridProperty,
     pd.DataFrame,
-    pd.DataFrame | None,
-    GridProperty | None,
 ]:
     """Compute TPFA transmissibilities for a corner-point grid.
 
-    Returns three GridProperty objects (tranx, trany, tranz), a NNC DataFrame,
-    and optionally nested-hybrid NNC results.
+    Returns three GridProperty objects (tranx, trany, tranz) and a NNC DataFrame.
     See Grid.get_transmissibilities() for full documentation.
     """
     grid._set_xtgformat2()
@@ -97,56 +95,15 @@ def get_transmissibilities(
 
     nc, nr, nl = grid.ncol, grid.nrow, grid.nlay
 
-    if nnc_table_only:
+    if nnc_table is not None or nnc_table_only:
         if nnc_table is None:
             raise ValueError("nnc_table_only=True requires nnc_table to be provided.")
-        cell_mask = _get_cell_mask(permx, nc, nr, nl)
-        empty_vals = np.zeros((nc, nr, nl), dtype=np.float64)
-        tranx = GridProperty(
-            ncol=nc,
-            nrow=nr,
-            nlay=nl,
-            name="TRANX",
-            values=np.ma.MaskedArray(empty_vals.copy(), mask=cell_mask),
-            discrete=False,
+        warnings.warn(
+            "nnc_table and nnc_table_only are deprecated; use "
+            "get_transmissibilities_nnc_nested_hybrid instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        trany = GridProperty(
-            ncol=nc,
-            nrow=nr,
-            nlay=nl,
-            name="TRANY",
-            values=np.ma.MaskedArray(empty_vals.copy(), mask=cell_mask),
-            discrete=False,
-        )
-        tranz = GridProperty(
-            ncol=nc,
-            nrow=nr,
-            nlay=nl,
-            name="TRANZ",
-            values=np.ma.MaskedArray(empty_vals.copy(), mask=cell_mask),
-            discrete=False,
-        )
-        nnc_df = pd.DataFrame(
-            {
-                "I1": pd.Series(dtype=np.int32),
-                "J1": pd.Series(dtype=np.int32),
-                "K1": pd.Series(dtype=np.int32),
-                "I2": pd.Series(dtype=np.int32),
-                "J2": pd.Series(dtype=np.int32),
-                "K2": pd.Series(dtype=np.int32),
-                "T": pd.Series(dtype=np.float64),
-                "TYPE": pd.Series(dtype=object),
-            }
-        )
-        nnc_nested_df, refined_boundary_prop = get_nnc_nested_hybrid(
-            grid,
-            permx,
-            permy,
-            permz,
-            ntg,
-            nnc_table,
-        )
-        return tranx, trany, tranz, nnc_df, nnc_nested_df, refined_boundary_prop
 
     px = _to_property_array(permx, nc, nr, nl)
     py = _to_property_array(permy, nc, nr, nl)
@@ -287,20 +244,7 @@ def get_transmissibilities(
             keep[fault_sel.values] = significant
             nnc_df = nnc_df[keep].reset_index(drop=True)
 
-    if nnc_table is not None:
-        nnc_nested_df, refined_boundary_prop = get_nnc_nested_hybrid(
-            grid,
-            permx,
-            permy,
-            permz,
-            ntg,
-            nnc_table,
-        )
-    else:
-        nnc_nested_df = None
-        refined_boundary_prop = None
-
-    return tranx, trany, tranz, nnc_df, nnc_nested_df, refined_boundary_prop
+    return tranx, trany, tranz, nnc_df
 
 
 # ---------------------------------------------------------------------------

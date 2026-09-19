@@ -2315,8 +2315,6 @@ class Grid(_Grid3D):
         GridProperty,
         GridProperty,
         pd.DataFrame,
-        pd.DataFrame | None,
-        GridProperty | None,
     ]:
         """Compute TPFA transmissibilities between all cell pairs.
 
@@ -2343,11 +2341,8 @@ class Grid(_Grid3D):
         - **Pinch-out NNCs**: K-pairs connected across one or more entirely
           collapsed (zero-thickness) layers.
 
-        When *nnc_table* is supplied the method additionally computes
-        transmissibilities across the boundary of a nested hybrid grid.  The
-        table is produced by
-        ``fmu.tools.nestedhybridgrid.create_nested_hybrid_grid`` and
-        encodes every mother ↔ refined cell pair that should be connected.
+        Use :meth:`get_transmissibilities_nnc_nested_hybrid` to compute
+        transmissibilities across nested-hybrid grid boundaries.
 
         Args:
             permx: Permeability in the I-direction (grid cells), md, either as
@@ -2367,28 +2362,13 @@ class Grid(_Grid3D):
                 NNC.  Fault NNCs whose throw is smaller than this value are
                 discarded as numerical artefacts.  Default is ``0.0`` (no
                 filtering).  A typical practical value is ``0.1`` metres.
-            nnc_table: Optional :class:`pandas.DataFrame` with columns
-                ``I1, J1, K1`` (mother cell, 1-based), ``I2, J2, K2`` (refined
-                cell, 1-based), and ``DIRECTION`` (face direction from the
-                mother cell's perspective: ``I+``, ``I-``, ``J+``, ``J-``,
-                ``K+``, ``K-``). This is needed for special cases like so-called
-                nested-hybrid grids, not for the ordinary TPFA calculations.
-                When provided, nested-hybrid NNC transmissibilities are computed
-                for each cell pair and returned in the last two elements of the
-                result tuple.
-            nnc_table_only: If ``True``, skip the ordinary TPFA
-                transmissibility calculations (I/J/K neighbour, fault and
-                pinch-out NNCs) and only compute nested-hybrid NNC
-                transmissibilities from *nnc_table*.  In this mode ``tranx``,
-                ``trany`` and ``tranz`` are returned as zero-valued
-                :class:`~xtgeo.GridProperty` objects (masked where the input
-                permeability is masked) and the regular ``nnc`` DataFrame is
-                empty.  Requires *nnc_table* to be supplied.  Defaults to
-                ``False``.
+            nnc_table: Deprecated. Use
+                :meth:`get_transmissibilities_nnc_nested_hybrid` instead.
+            nnc_table_only: Deprecated. Use
+                :meth:`get_transmissibilities_nnc_nested_hybrid` instead.
 
         Returns:
-            A 6-tuple ``(tranx, trany, tranz, nnc, nnc_nested_hybrid,
-            refined_boundary_prop)``:
+            A 4-tuple ``(tranx, trany, tranz, nnc)``:
 
             - **tranx**: :class:`~xtgeo.GridProperty` of shape
               ``(ncol, nrow, nlay)`` — I-direction transmissibilities in
@@ -2406,15 +2386,6 @@ class Grid(_Grid3D):
               ``I1, J1, K1, I2, J2, K2`` (1-based cell indices),
               ``T`` (transmissibility), and ``TYPE`` (``"Fault"`` or
               ``"Pinchout"``).
-            - **nnc_nested_hybrid**: :class:`pandas.DataFrame` with columns
-              ``I1, J1, K1`` (mother cell, 1-based), ``I2, J2, K2`` (refined
-              cell, 1-based), ``T`` (transmissibility), ``TYPE``
-              (``"NestedHybrid"``), and ``DIRECTION``. ``None`` when
-              *nnc_table* is not supplied.
-            - **refined_boundary_prop**: :class:`~xtgeo.GridProperty` (discrete,
-              codes ``{0: "none", 1: "refined_boundary"}``) marking the refined
-              cells that appear as cell 2 in at least one nested-hybrid NNC.
-              ``None`` when *nnc_table* is not supplied.
 
         Example::
 
@@ -2423,23 +2394,10 @@ class Grid(_Grid3D):
             >>> permy = xtgeo.gridproperty_from_file("permy.roff", grid=grid)
             >>> permz = xtgeo.gridproperty_from_file("permz.roff", grid=grid)
             >>> ntg = xtgeo.gridproperty_from_file("ntg.roff", grid=grid)
-            >>> tranx, trany, tranz, nnc, _, _ = grid.get_transmissibilities(
+            >>> tranx, trany, tranz, nnc = grid.get_transmissibilities(
             ...     permx, permy, permz, ntg=ntg
             ... )
             >>> print(f"Max TRANX: {tranx.values.max():.4f}")
-
-        Nested hybrid example::
-
-            >>> from fmu.tools import create_nested_hybrid_grid
-            >>> merged, nnc_tbl = create_nested_hybrid_grid(
-            ...     grid, region, target_region_id=2, refinement=(3, 3, 3)
-            ... )
-            >>> tranx, trany, tranz, nnc, nnc_nh, rbnd = (
-            ...     merged.get_transmissibilities(
-            ...         permx, permy, permz, ntg=ntg, nnc_table=nnc_tbl
-            ...     )
-            ... )
-            >>> print(f"NNCs found: {len(nnc_nh)}")
         """
 
         return _grid_transmissibilities.get_transmissibilities(
@@ -2452,6 +2410,50 @@ class Grid(_Grid3D):
             min_fault_throw=min_fault_throw,
             nnc_table=nnc_table,
             nnc_table_only=nnc_table_only,
+        )
+
+    def get_transmissibilities_nnc_nested_hybrid(
+        self,
+        permx: GridProperty | float,
+        permy: GridProperty | float,
+        permz: GridProperty | float,
+        ntg: GridProperty | float | None,
+        nnc_table: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, GridProperty]:
+        """Compute NNC transmissibilities for nested-hybrid cell pairs.
+
+        Args:
+            permx: Permeability in the I-direction (grid cells), md, either as
+                a :class:`~xtgeo.GridProperty` or a scalar float.
+            permy: Permeability in the J-direction (grid cells), md, either as
+                a :class:`~xtgeo.GridProperty` or a scalar float.
+            permz: Permeability in the K-direction (grid cells), md, either as
+                a :class:`~xtgeo.GridProperty`  or a scalar float.
+            ntg: Net-to-gross ratio (0–1). Applied to horizontal transmissibility
+                only. Either a :class:`~xtgeo.GridProperty` or a scalar float.
+            nnc_table: :class:`pandas.DataFrame` with columns ``I1, J1, K1``
+                (mother cell, 1-based), ``I2, J2, K2`` (refined cell, 1-based),
+                and ``DIRECTION`` (face direction from the mother cell's
+                perspective: ``I+``, ``I-``, ``J+``, ``J-``, ``K+``, ``K-``).
+
+        Returns:
+            A tuple ``(nnc_nested_hybrid, refined_boundary_prop)``:
+
+            - **nnc_nested_hybrid**: :class:`pandas.DataFrame` with columns
+              ``I1, J1, K1`` (mother cell, 1-based), ``I2, J2, K2`` (refined
+              cell, 1-based), ``T`` (transmissibility), ``TYPE``
+              (``"NestedHybrid"``), and ``DIRECTION``.
+            - **refined_boundary_prop**: :class:`~xtgeo.GridProperty` (discrete,
+              codes ``{0: "none", 1: "refined_boundary"}``) marking the refined
+              cells that appear as cell 2 in at least one nested-hybrid NNC.
+        """
+        return _grid_transmissibilities.get_nnc_nested_hybrid(
+            self,
+            permx=permx,
+            permy=permy,
+            permz=permz,
+            ntg=ntg,
+            nnc_table=nnc_table,
         )
 
     def get_heights_above_ffl(
