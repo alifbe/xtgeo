@@ -45,17 +45,20 @@ print(poly.get_dataframe())
 | `PolygonWriter` | Writes polygons to ResInsight. Supports saving to root collection or into named folders. |
 | `_rips_polygon_to_data()` | Module-level helper that converts a rips `Polygon` object to `PolygonDataResInsight` with proper deep copy. |
 
-#### `_resinsight_base.py` — Shared Base Class Extensions
+#### Shared ResInsight Infrastructure
 
-New methods added to `_BaseResInsightDataRW` (the base class shared with the
-grid interface):
+The polygon implementation uses the same infrastructure as the regular-surface
+interface:
 
-| Method | Purpose |
+| API | Purpose |
 |---|---|
-| `get_polygon_collection()` | Returns the first `rips.PolygonCollection` from the project. Includes a `None` guard for the `rips` module import. |
-| `find_polygon()` | Static method. Scans a collection for a polygon by name (`find_last` controls first vs last match). |
-| `find_folder()` | Static method. Finds a sub-collection (folder) by name. Generalized via `name_attr` parameter for reuse with surface collections. |
-| `get_or_create_folder()` | Static method. Finds or creates a folder. Uses `add_folder()` from the rips API. |
+| `_BaseResInsightDataRW` | Shared instance/project connection handling. |
+| `select_by_name()` | Selects the first or last object matching a name. |
+| `resolve_folder()` | Resolves or creates `/`-separated collection paths. |
+| `require_rips()` | Enforces the supported `rips` version and provides the loaded module. |
+
+Polygon-specific collection and object lookup remains in `_polygon.py`, rather
+than adding polygon methods to the shared base class.
 
 #### `_rips_package.py` — Type Aliases
 
@@ -168,12 +171,12 @@ ResInsight. The fix applies negation consistently at every XTGeo ↔ ResInsight
 boundary, rather than in the public API layer, so the `PolygonDataResInsight`
 container always holds coordinates in ResInsight convention (Z-up).
 
-### 2.4 Generalized Folder Helpers
+### 2.4 Shared Folder Helpers
 
-`find_folder()` and `get_or_create_folder()` accept a `name_attr` parameter
-(defaults to `"polygon_collection_name"`) so they can be reused by a future
-`SurfaceReader`/`SurfaceWriter` without duplicating the folder lookup logic.
-The surface collection uses a different attribute name for its folder name.
+Folder traversal uses the `/`-separated `resolve_folder()` helper introduced by
+the regular-surface interface. Polygon collections pass
+`"polygon_collection_name"` as their folder-name attribute, while surface
+collections pass `"surface_user_description"`.
 
 ### 2.5 DRY Refactoring
 
@@ -184,13 +187,10 @@ The surface collection uses a different attribute name for its folder name.
 | Find-existing-or-create logic duplicated in `save()` and `save_to_folder()` | `_upsert_polygon()` | Upsert logic in Writer |
 | Per-element Z-negation loop in `from_xtgeo_polygons()` | Vectorized `coords[:, 2] = -coords[:, 2]` | Consistent with `from_xtgeo_polygons_all()` |
 
-### 2.6 `rips` None Guard
+### 2.6 `rips` Version Gate
 
-The `rips` module is loaded dynamically via `importlib.import_module()` and is
-`Any | None` at type-check time. Without the `if rips is None` guard in
-`get_polygon_collection()`, mypy reports `Item "None" of "Any | None" has no
-attribute "PolygonCollection"`. The guard also provides a clear `ImportError`
-message to users who don't have `rips` installed.
+Polygon collection lookup calls `require_rips()`, using the same version gate
+and actionable error messages as the grid and regular-surface interfaces.
 
 ### 2.7 Empty Folder Guard
 
@@ -265,12 +265,11 @@ Consider whether the rips API supports:
 - Binary/numpy array transfer for coordinates.
 - Streaming for large polygon sets.
 
-### 3.6 `find_last` Parameter Cleanup
+### 3.6 Unique Names Within Folders
 
-`Polygons.to_resinsight()` accepts a `find_last` parameter for API consistency
-with `Grid.to_resinsight()`, but it is not used since all writes go through
-`save_to_folder()`. Consider removing it to avoid confusion, or implementing
-it if future use cases arise.
+ResInsight guarantees that polygon names are unique within a folder. Polygon
+lookup therefore follows the regular-surface interface and selects the single
+matching object without exposing a `find_last` option.
 
 ### 3.7 Roundtrip POLY_ID Preservation
 

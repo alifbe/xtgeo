@@ -11,14 +11,42 @@ import pandas as pd
 from xtgeo.common._xyz_enum import _AttrName
 from xtgeo.common.log import null_logger
 
-from ._resinsight_base import _BaseResInsightDataRW
+from ._resinsight_base import (
+    _BaseResInsightDataRW,
+    resolve_folder,
+    select_by_name,
+)
+from ._rips_package import NameConflictPolicy, require_rips
 
 if TYPE_CHECKING:
     from xtgeo.xyz.polygons import Polygons
 
-    from ._rips_package import ResInsightInstanceOrPortType
+    from ._rips_package import (
+        RipsPolygonCollectionType,
+        RipsPolygonType,
+        RipsProjectType,
+    )
 
 logger = null_logger(__name__)
+_NAME_ATTR = "polygon_collection_name"
+
+
+def _get_polygon_collection(
+    project: RipsProjectType,
+) -> RipsPolygonCollectionType:
+    """Return the active project's root polygon collection."""
+    collections = project.descendants(require_rips().PolygonCollection)
+    if not collections:
+        raise RuntimeError("No PolygonCollection found in the active project")
+    return collections[0]
+
+
+def _find_polygon(
+    collection: RipsPolygonCollectionType,
+    name: str,
+) -> RipsPolygonType | None:
+    """Find a polygon directly in *collection* by name."""
+    return select_by_name(collection.polygons(), name, find_last=False)
 
 
 def _rips_polygon_to_data(polygon: Any) -> PolygonDataResInsight:
@@ -147,31 +175,24 @@ class PolygonDataResInsight:
 class PolygonReader(_BaseResInsightDataRW):
     """Read polygon data from ResInsight using rips."""
 
-    def __init__(
-        self,
-        instance_or_port: ResInsightInstanceOrPortType | None = None,
-    ) -> None:
-        super().__init__(instance_or_port)
-
-    def _load_polygons_from(
-        self, collection: Any
-    ) -> list[PolygonDataResInsight]:
+    @staticmethod
+    def _load_polygons_from(collection: Any) -> list[PolygonDataResInsight]:
         """Convert all polygons in a collection/folder to data objects."""
         return [_rips_polygon_to_data(p) for p in collection.polygons()]
 
-    def load(self, polygon_name: str, find_last: bool = True) -> PolygonDataResInsight:
+    def _root_collection(self) -> RipsPolygonCollectionType:
+        return _get_polygon_collection(self.get_project())
+
+    def load(self, polygon_name: str) -> PolygonDataResInsight:
         """Load a polygon by name from the ResInsight project.
 
         Args:
             polygon_name: Name of the polygon to load.
-            find_last: When multiple polygons share the same name, select the
-                last match if ``True`` (default) or the first match if ``False``.
 
         Raises:
             RuntimeError: If no polygon with ``polygon_name`` is found.
         """
-        collection = self.get_polygon_collection()
-        polygon = self.find_polygon(collection, polygon_name, find_last)
+        polygon = _find_polygon(self._root_collection(), polygon_name)
         if polygon is None:
             raise RuntimeError(f"Cannot find any polygon with name '{polygon_name}'")
         return _rips_polygon_to_data(polygon)
@@ -185,17 +206,16 @@ class PolygonReader(_BaseResInsightDataRW):
         Raises:
             RuntimeError: If no folder with ``folder_name`` is found.
         """
-        collection = self.get_polygon_collection()
-        folder = self.find_folder(collection, folder_name)
+        folder = resolve_folder(
+            self._root_collection(), folder_name, _NAME_ATTR
+        )
         if folder is None:
             raise RuntimeError(
                 f"Cannot find any polygon folder with name '{folder_name}'"
             )
         return self._load_polygons_from(folder)
 
-    def load_by_name(
-        self, name: str, find_last: bool = True
-    ) -> list[PolygonDataResInsight]:
+    def load_by_name(self, name: str) -> list[PolygonDataResInsight]:
         """Load polygon(s) by name, checking folders first then individual polygons.
 
         If a folder with ``name`` exists, all polygons from it are returned.
@@ -204,18 +224,15 @@ class PolygonReader(_BaseResInsightDataRW):
 
         Args:
             name: Name of the folder or polygon to load.
-            find_last: When looking up a single polygon and multiple polygons
-                share the same name, select the last match if ``True`` (default)
-                or the first match if ``False``.
 
         Raises:
             RuntimeError: If no folder or polygon with ``name`` is found.
         """
-        collection = self.get_polygon_collection()
-        folder = self.find_folder(collection, name)
+        collection = self._root_collection()
+        folder = resolve_folder(collection, name, _NAME_ATTR)
         if folder is not None:
             return self._load_polygons_from(folder)
-        polygon = self.find_polygon(collection, name, find_last)
+        polygon = _find_polygon(collection, name)
         if polygon is not None:
             return [_rips_polygon_to_data(polygon)]
         raise RuntimeError(
@@ -227,32 +244,28 @@ class PolygonReader(_BaseResInsightDataRW):
 
         Does not recurse into sub-folders.
         """
-        return self._load_polygons_from(self.get_polygon_collection())
+        return self._load_polygons_from(self._root_collection())
 
 
 class PolygonWriter(_BaseResInsightDataRW):
     """Write polygon data to ResInsight using rips."""
 
-    def __init__(
-        self,
-        instance_or_port: ResInsightInstanceOrPortType | None = None,
-    ) -> None:
-        super().__init__(instance_or_port)
-
-    def _upsert_polygon(
-        self, collection: Any, data: PolygonDataResInsight, find_last: bool = True
-    ) -> None:
+    def _upsert_polygon(self, collection: Any, data: PolygonDataResInsight) -> None:
         """Create or update a polygon in a rips collection or folder."""
-        existing = self.find_polygon(collection, data.name, find_last)
+        existing = _find_polygon(collection, data.name)
         if existing is not None:
             logger.debug("Updating polygon '%s'.", data.name)
             existing.coordinates = data.coordinates
             existing.update()
         else:
             logger.debug("Creating polygon '%s'.", data.name)
-            collection.create_polygon(name=data.name, coordinates=data.coordinates)
+            collection.create_polygon(
+                name=data.name,
+                coordinates=data.coordinates,
+                on_name_conflict=NameConflictPolicy.FAIL,
+            )
 
-    def save(self, data: PolygonDataResInsight, find_last: bool = True) -> None:
+    def save(self, data: PolygonDataResInsight) -> None:
         """Save a single polygon to the root of the polygon collection.
 
         If a polygon with the same name already exists, its coordinates are
@@ -260,18 +273,18 @@ class PolygonWriter(_BaseResInsightDataRW):
 
         Args:
             data: The polygon data to save.
-            find_last: When multiple polygons share the same name, replace the
-                last match if ``True`` (default) or the first match if ``False``.
         """
         try:
-            self._upsert_polygon(self.get_polygon_collection(), data, find_last)
+            self._upsert_polygon(_get_polygon_collection(self.get_project()), data)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to save ResInsight polygon data: {exc}"
             ) from exc
 
     def save_to_folder(
-        self, folder_name: str, data_list: list[PolygonDataResInsight]
+        self,
+        folder_name: str,
+        data_list: list[PolygonDataResInsight],
     ) -> None:
         """Save multiple polygons into a named folder in the polygon collection.
 
@@ -283,8 +296,12 @@ class PolygonWriter(_BaseResInsightDataRW):
             data_list: List of polygon data to save inside the folder.
         """
         try:
-            collection = self.get_polygon_collection()
-            folder = self.get_or_create_folder(collection, folder_name)
+            folder = resolve_folder(
+                _get_polygon_collection(self.get_project()),
+                folder_name,
+                _NAME_ATTR,
+                create=True,
+            )
             for data in data_list:
                 self._upsert_polygon(folder, data)
         except Exception as exc:

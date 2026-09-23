@@ -19,6 +19,7 @@ from xtgeo.interfaces.resinsight._polygon import (
     PolygonDataResInsight,
     PolygonReader,
     PolygonWriter,
+    _find_polygon,
 )
 
 # ---------------------------------------------------------------------------
@@ -50,6 +51,20 @@ def test_unhashable():
     a = PolygonDataResInsight(name="p", coordinates=[[0.0, 0.0, 0.0]])
     with pytest.raises(TypeError):
         hash(a)
+
+
+def test_find_polygon():
+    class Collection:
+        @staticmethod
+        def polygons():
+            return [
+                type("Polygon", (), {"name": "same", "value": 1})(),
+                type("Polygon", (), {"name": "other", "value": 2})(),
+            ]
+
+    collection = Collection()
+    assert _find_polygon(collection, "same").value == 1
+    assert _find_polygon(collection, "missing") is None
 
 
 # ---------------------------------------------------------------------------

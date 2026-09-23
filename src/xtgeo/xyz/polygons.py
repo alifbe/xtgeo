@@ -227,7 +227,6 @@ def polygons_from_wells(
 def polygons_from_resinsight(
     instance_or_port: ResInsightInstanceOrPortType | None,
     polygon_name: str,
-    find_last: bool = True,
 ) -> Polygons:
     """Load polygon(s) from ResInsight into an XTGeo :class:`Polygons` object.
 
@@ -244,9 +243,6 @@ def polygons_from_resinsight(
         instance_or_port: Optional ``rips.Instance`` or gRPC port. Use ``None``
             to auto-discover a running ResInsight instance.
         polygon_name: Name of the polygon or folder to load from ResInsight.
-        find_last: When looking up a single polygon and multiple polygons share
-            the same name, select the last match if ``True`` (default) or the
-            first match if ``False``.
 
     Returns:
         A :class:`Polygons` instance.
@@ -259,12 +255,10 @@ def polygons_from_resinsight(
         print(poly.get_dataframe())
 
     """
-    import xtgeo.interfaces.resinsight
+    from xtgeo.interfaces.resinsight._polygon import PolygonReader
 
-    reader = xtgeo.interfaces.resinsight.PolygonReader(
-        instance_or_port=instance_or_port,
-    )
-    data_list = reader.load_by_name(polygon_name, find_last=find_last)
+    reader = PolygonReader(instance_or_port=instance_or_port)
+    data_list = reader.load_by_name(polygon_name)
 
     if not data_list:
         raise RuntimeError(
@@ -544,7 +538,6 @@ class Polygons(XYZ):
         self,
         instance_or_port: ResInsightInstanceOrPortType | None,
         name: str | None = None,
-        find_last: bool = True,
     ) -> None:
         """Export this Polygons object to the active ResInsight project.
 
@@ -567,8 +560,6 @@ class Polygons(XYZ):
                 ``None`` to auto-discover a running ResInsight instance.
             name: Optional name to use for the folder in ResInsight.
                 Defaults to this instance's :attr:`name`.
-            find_last: Not used; kept for API consistency with
-                :meth:`~xtgeo.grid3d.grid.Grid.to_resinsight`.
 
         Example::
 
@@ -578,16 +569,15 @@ class Polygons(XYZ):
             poly.to_resinsight(5000)
 
         """
-        import xtgeo.interfaces.resinsight
+        from xtgeo.interfaces.resinsight._polygon import (
+            PolygonDataResInsight,
+            PolygonWriter,
+        )
 
         effective_name = name if name is not None else self.name
-        writer = xtgeo.interfaces.resinsight.PolygonWriter(
-            instance_or_port=instance_or_port
-        )
-        segments = (
-            xtgeo.interfaces.resinsight.PolygonDataResInsight.from_xtgeo_polygons_all(
-                self, name=effective_name
-            )
+        writer = PolygonWriter(instance_or_port=instance_or_port)
+        segments = PolygonDataResInsight.from_xtgeo_polygons_all(
+            self, name=effective_name
         )
         writer.save_to_folder(effective_name, segments)
 
