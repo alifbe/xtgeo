@@ -257,6 +257,9 @@ def polygons_from_resinsight(
     """
     from xtgeo.interfaces.resinsight._polygon import PolygonReader
 
+    if not isinstance(polygon_name, str) or not polygon_name.strip(" /"):
+        raise ValueError("Polygon name must contain a non-whitespace, non-slash value")
+
     reader = PolygonReader(instance_or_port=instance_or_port)
     data_list = reader.load_by_name(polygon_name)
 
@@ -274,10 +277,19 @@ def polygons_from_resinsight(
     # Multiple polygons from a folder: combine into multi-segment Polygons.
     frames = []
     for poly_id, data in enumerate(data_list):
-        poly = data.to_xtgeo_polygons()
-        df = poly.get_dataframe()
-        df[poly.pname] = poly_id
-        frames.append(df)
+        coords = np.asarray(data.coordinates, dtype=np.float64)
+        frames.append(
+            pd.DataFrame(
+                {
+                    _AttrName.XNAME.value: coords[:, 0],
+                    _AttrName.YNAME.value: coords[:, 1],
+                    _AttrName.ZNAME.value: -coords[:, 2],
+                    _AttrName.PNAME.value: np.full(
+                        len(coords), poly_id, dtype=np.int32
+                    ),
+                }
+            )
+        )
     combined = pd.concat(frames, ignore_index=True)
     return Polygons(values=combined, name=polygon_name)
 
@@ -549,11 +561,8 @@ class Polygons(XYZ):
         If a folder with matching polygon names already exists, their
         coordinates are updated in place.
 
-        .. note::
-            Polygons that exist in the folder from a previous save but are not
-            part of the current export are **not** removed.  This is a
-            limitation of the ResInsight gRPC API, which does not support
-            polygon deletion.
+        If the target folder contains polygons that are not part of the current
+        export, the operation fails rather than leaving stale geometry behind.
 
         Args:
             instance_or_port: Optional ``rips.Instance`` or gRPC port. Use
@@ -575,6 +584,10 @@ class Polygons(XYZ):
         )
 
         effective_name = name if name is not None else self.name
+        if not isinstance(effective_name, str) or not effective_name.strip(" /"):
+            raise ValueError(
+                "Polygon name must contain a non-whitespace, non-slash value"
+            )
         writer = PolygonWriter(instance_or_port=instance_or_port)
         segments = PolygonDataResInsight.from_xtgeo_polygons_all(
             self, name=effective_name

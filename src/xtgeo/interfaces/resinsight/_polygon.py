@@ -31,6 +31,12 @@ logger = null_logger(__name__)
 _NAME_ATTR = "polygon_collection_name"
 
 
+def _validate_polygon_name(name: str) -> None:
+    """Reject names that would resolve to the root collection."""
+    if not isinstance(name, str) or not name.strip(" /"):
+        raise ValueError("Polygon name must contain a non-whitespace, non-slash value")
+
+
 def _get_polygon_collection(
     project: RipsProjectType,
 ) -> RipsPolygonCollectionType:
@@ -135,9 +141,9 @@ class PolygonDataResInsight:
             raise ValueError(
                 f"No polygon segment with POLY_ID={poly_id} found in '{polygons.name}'"
             )
-        coords = segment[
-            [polygons.xname, polygons.yname, polygons.zname]
-        ].to_numpy(dtype=np.float64, copy=True)
+        coords = segment[[polygons.xname, polygons.yname, polygons.zname]].to_numpy(
+            dtype=np.float64, copy=True
+        )
         coords[:, 2] = -coords[:, 2]
         return cls(name=polygons.name, coordinates=coords.tolist())
 
@@ -157,14 +163,23 @@ class PolygonDataResInsight:
             name: Optional base name override. Defaults to ``polygons.name``.
         """
         df = polygons.get_dataframe(copy=False)
+        if df.empty:
+            raise ValueError(f"Polygons object '{polygons.name}' contains no data")
         pname = polygons.pname
+        if pname not in df.columns:
+            raise ValueError(
+                f"Polygons object '{polygons.name}' has no '{pname}' column"
+            )
         xname, yname, zname = polygons.xname, polygons.yname, polygons.zname
         base_name = name if name is not None else polygons.name
+        _validate_polygon_name(base_name)
 
         result: list[PolygonDataResInsight] = []
         for poly_id in sorted(df[pname].unique()):
             segment = df[df[pname] == poly_id]
-            coords = segment[[xname, yname, zname]].values.copy()
+            coords = segment[[xname, yname, zname]].to_numpy(
+                dtype=np.float64, copy=True
+            )
             coords[:, 2] = -coords[:, 2]
             result.append(
                 cls(name=f"{base_name} ({poly_id})", coordinates=coords.tolist())
@@ -192,6 +207,7 @@ class PolygonReader(_BaseResInsightDataRW):
         Raises:
             RuntimeError: If no polygon with ``polygon_name`` is found.
         """
+        _validate_polygon_name(polygon_name)
         polygon = _find_polygon(self._root_collection(), polygon_name)
         if polygon is None:
             raise RuntimeError(f"Cannot find any polygon with name '{polygon_name}'")
@@ -206,9 +222,8 @@ class PolygonReader(_BaseResInsightDataRW):
         Raises:
             RuntimeError: If no folder with ``folder_name`` is found.
         """
-        folder = resolve_folder(
-            self._root_collection(), folder_name, _NAME_ATTR
-        )
+        _validate_polygon_name(folder_name)
+        folder = resolve_folder(self._root_collection(), folder_name, _NAME_ATTR)
         if folder is None:
             raise RuntimeError(
                 f"Cannot find any polygon folder with name '{folder_name}'"
@@ -228,6 +243,7 @@ class PolygonReader(_BaseResInsightDataRW):
         Raises:
             RuntimeError: If no folder or polygon with ``name`` is found.
         """
+        _validate_polygon_name(name)
         collection = self._root_collection()
         folder = resolve_folder(collection, name, _NAME_ATTR)
         if folder is not None:
@@ -296,12 +312,22 @@ class PolygonWriter(_BaseResInsightDataRW):
             data_list: List of polygon data to save inside the folder.
         """
         try:
+            _validate_polygon_name(folder_name)
             folder = resolve_folder(
                 _get_polygon_collection(self.get_project()),
                 folder_name,
                 _NAME_ATTR,
                 create=True,
             )
+            expected_names = {data.name for data in data_list}
+            existing_names = {polygon.name for polygon in folder.polygons()}
+            stale_names = existing_names - expected_names
+            if stale_names:
+                stale = ", ".join(sorted(stale_names))
+                raise RuntimeError(
+                    f"Folder '{folder_name}' contains polygons not present in "
+                    f"the export: {stale}"
+                )
             for data in data_list:
                 self._upsert_polygon(folder, data)
         except Exception as exc:

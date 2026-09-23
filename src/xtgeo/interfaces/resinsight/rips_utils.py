@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from xtgeo.common.log import null_logger
 
@@ -80,7 +80,10 @@ class RipsApiUtils:
 
     @staticmethod
     def launch_instance(
-        executable: str | pathlib.Path = "", console_mode: bool = False, port: int = -1
+        executable: str | pathlib.Path = "",
+        console_mode: bool = False,
+        port: int = -1,
+        command_line_parameters: Sequence[str] | None = None,
     ) -> RipsInstanceType:
         """Launch a new ResInsight instance using the specified executable.
 
@@ -93,14 +96,17 @@ class RipsApiUtils:
                   ``RESINSIGHT_GRPC_PORT`` environment variable if it is set.
                 - ``0``: Let gRPC automatically select an available free port.
                 - ``> 0``: Attempt to launch ResInsight using the given port number.
+            command_line_parameters: Optional extra command-line parameters.
         """
         rips = require_rips()
-        instance = rips.Instance.launch(
-            resinsight_executable=str(executable),
-            console=console_mode,
-            launch_port=port,
-            command_line_parameters=["--threadcount", "1"],
-        )
+        launch_args = {
+            "resinsight_executable": str(executable),
+            "console": console_mode,
+            "launch_port": port,
+        }
+        if command_line_parameters is not None:
+            launch_args["command_line_parameters"] = list(command_line_parameters)
+        instance = rips.Instance.launch(**launch_args)
         logger.debug("Launching ResInsight using '%s'", str(executable))
         if instance is None:
             raise RuntimeError("Failed to launch ResInsight instance")

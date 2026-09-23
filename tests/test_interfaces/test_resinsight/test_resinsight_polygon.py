@@ -168,6 +168,30 @@ def test_from_xtgeo_polygons_all():
     ]
 
 
+def test_from_xtgeo_polygons_all_empty_raises():
+    with pytest.raises(ValueError, match="contains no data"):
+        PolygonDataResInsight.from_xtgeo_polygons_all(xtgeo.Polygons())
+
+
+def test_from_xtgeo_polygons_all_casts_coordinates_to_float():
+    rows = [
+        {"X_UTME": 1, "Y_UTMN": 2, "Z_TVDSS": 3, "POLY_ID": 0},
+    ]
+    poly = xtgeo.Polygons(values=pd.DataFrame(rows), name="integer_poly")
+    result = PolygonDataResInsight.from_xtgeo_polygons_all(poly)
+    assert result[0].coordinates == [[1.0, 2.0, -3.0]]
+
+
+def test_polygon_name_must_not_resolve_to_root():
+    with pytest.raises(ValueError, match="Polygon name"):
+        xtgeo.polygons_from_resinsight(None, "")
+
+    with pytest.raises(ValueError, match="Polygon name"):
+        xtgeo.Polygons(values=_make_polygons().get_dataframe(), name="").to_resinsight(
+            None
+        )
+
+
 def test_from_xtgeo_polygons_all_preserves_coordinates():
     poly = _make_polygons(n_segments=2, pts_per_seg=4)
     result = PolygonDataResInsight.from_xtgeo_polygons_all(poly)
@@ -227,6 +251,17 @@ def test_polygon_reader_missing_raises(resinsight_instance):
 
 
 @pytest.mark.requires_resinsight
+def test_polygon_reader_load_all(resinsight_instance):
+    data = PolygonDataResInsight(
+        name="LOAD_ALL_POLY", coordinates=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
+    )
+    PolygonWriter(resinsight_instance).save(data)
+
+    loaded = PolygonReader(resinsight_instance).load_all()
+    assert any(item.name == data.name for item in loaded)
+
+
+@pytest.mark.requires_resinsight
 def test_roundtrip_resinsight(resinsight_instance):
     """Full ResInsight roundtrip: write and read back preserves data exactly."""
     coords = [
@@ -264,6 +299,8 @@ def test_public_api_to_resinsight(resinsight_instance):
     df_loaded = loaded.get_dataframe()
     assert len(df_loaded) == 3
     assert_allclose(df_loaded["X_UTME"].values, [50.0, 60.0, 60.0])
+    assert_allclose(df_loaded["Y_UTMN"].values, [50.0, 50.0, 60.0])
+    assert_allclose(df_loaded["Z_TVDSS"].values, [-500.0, -500.0, -500.0])
 
 
 @pytest.mark.requires_resinsight
@@ -290,6 +327,23 @@ def test_public_api_to_resinsight_multi_segment(resinsight_instance):
     assert len(seg1) == 2
     assert_allclose(seg0["X_UTME"].values, [10.0, 20.0, 30.0])
     assert_allclose(seg1["X_UTME"].values, [40.0, 50.0])
+    assert_allclose(seg0["Y_UTMN"].values, [100.0, 200.0, 300.0])
+    assert_allclose(seg1["Y_UTMN"].values, [400.0, 500.0])
+    assert_allclose(seg0["Z_TVDSS"].values, [-10.0, -20.0, -30.0])
+    assert_allclose(seg1["Z_TVDSS"].values, [-40.0, -50.0])
+
+
+@pytest.mark.requires_resinsight
+def test_public_api_rejects_stale_segments(resinsight_instance):
+    """A smaller replacement must not leave old segments in the folder."""
+    initial = _make_polygons(n_segments=2, pts_per_seg=2)
+    initial.name = "STALE_SEGMENTS"
+    initial.to_resinsight(resinsight_instance)
+
+    replacement = _make_polygons(n_segments=1, pts_per_seg=2)
+    replacement.name = "STALE_SEGMENTS"
+    with pytest.raises(RuntimeError, match="not present in the export"):
+        replacement.to_resinsight(resinsight_instance)
 
 
 @pytest.mark.requires_resinsight
